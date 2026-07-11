@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import ObiEnergyTrackerConfigEntry
-from .const import DOMAIN
+from .const import CONF_DEVICE_ID, DOMAIN
 from .coordinator import ObiEnergyTrackerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,9 +45,11 @@ class ObiEnergySensorBase(CoordinatorEntity[ObiEnergyTrackerCoordinator], Sensor
     def __init__(self, coordinator: ObiEnergyTrackerCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
+        entry = coordinator.config_entry
+        self._device_id = entry.data.get(CONF_DEVICE_ID) or entry.entry_id
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, "obi_energy_tracker")},
-            "name": "Obi EnergyTracker",
+            "identifiers": {(DOMAIN, self._device_id)},
+            "name": f"Obi EnergyTracker ({entry.title})",
             "manufacturer": "Obi",
         }
 
@@ -55,7 +57,6 @@ class ObiEnergySensorBase(CoordinatorEntity[ObiEnergyTrackerCoordinator], Sensor
 class ObiMeterReadingSensor(ObiEnergySensorBase):
     """Sensor for total meter reading (Zählerstand)."""
 
-    _attr_unique_id = "obi_meter_reading"
     _attr_device_class = SensorDeviceClass.ENERGY
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
     _attr_translation_key = "meter_reading"
@@ -64,6 +65,7 @@ class ObiMeterReadingSensor(ObiEnergySensorBase):
     def __init__(self, coordinator: ObiEnergyTrackerCoordinator) -> None:
         """Initialize the meter reading sensor."""
         super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_meter_reading"
         self._last_native_value: float | None = None
         self._last_native_value_set = False
 
