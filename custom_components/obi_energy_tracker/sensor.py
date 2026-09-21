@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import ObiEnergyTrackerConfigEntry
-from .const import CONF_DEVICE_ID, DOMAIN
+from .const import DOMAIN
 from .coordinator import ObiEnergyTrackerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,14 +27,32 @@ async def async_setup_entry(
     config_entry: ObiEnergyTrackerConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up sensors from a config entry."""
+    """Set up sensors from a config entry.
+
+    The bridge can have multiple devices (sensors) connected to it, and new
+    ones can appear later, so entities are added dynamically as they show up
+    in coordinator data instead of being fixed at setup time.
+    """
     coordinator = config_entry.runtime_data
+    known_device_ids: set[str] = set()
 
-    sensors = [
-        ObiMeterReadingSensor(coordinator),
-    ]
+    @callback
+    def _add_new_devices() -> None:
+        new_device_ids = [
+            device_id
+            for device_id in coordinator.data.get("devices", {})
+            if device_id not in known_device_ids
+        ]
+        if not new_device_ids:
+            return
+        known_device_ids.update(new_device_ids)
+        async_add_entities(
+            ObiMeterReadingSensor(coordinator, device_id)
+            for device_id in new_device_ids
+        )
 
-    async_add_entities(sensors)
+    _add_new_devices()
+    config_entry.async_on_unload(coordinator.async_add_listener(_add_new_devices))
 
 
 class ObiEnergySensorBase(CoordinatorEntity[ObiEnergyTrackerCoordinator], SensorEntity):
@@ -42,15 +60,18 @@ class ObiEnergySensorBase(CoordinatorEntity[ObiEnergyTrackerCoordinator], Sensor
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: ObiEnergyTrackerCoordinator) -> None:
+    def __init__(self, coordinator: ObiEnergyTrackerCoordinator, device_id: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        entry = coordinator.config_entry
-        self._device_id = entry.data.get(CONF_DEVICE_ID) or entry.entry_id
+        self._device_id = device_id
+        device_data = coordinator.data.get("devices", {}).get(device_id, {})
+        device_name = device_data.get("device_name") or device_id
+        bridge_id = coordinator.data.get("bridge_id")
         self._attr_device_info = {
-            "identifiers": {(DOMAIN, self._device_id)},
-            "name": f"Obi EnergyTracker ({entry.title})",
+            "identifiers": {(DOMAIN, device_id)},
+            "name": f"Obi EnergyTracker {device_name}",
             "manufacturer": "Obi",
+            "via_device": (DOMAIN, bridge_id) if bridge_id else None,
         }
 
 
@@ -62,9 +83,9 @@ class ObiMeterReadingSensor(ObiEnergySensorBase):
     _attr_translation_key = "meter_reading"
     _attr_native_unit_of_measurement = "Wh"
 
-    def __init__(self, coordinator: ObiEnergyTrackerCoordinator) -> None:
+    def __init__(self, coordinator: ObiEnergyTrackerCoordinator, device_id: str) -> None:
         """Initialize the meter reading sensor."""
-        super().__init__(coordinator)
+        super().__init__(coordinator, device_id)
         self._attr_unique_id = f"{self._device_id}_meter_reading"
         self._last_native_value: float | None = None
         self._last_native_value_set = False
@@ -82,16 +103,18 @@ class ObiMeterReadingSensor(ObiEnergySensorBase):
     @property
     def native_value(self) -> float | None:
         """Return the meter reading value."""
-        _LOGGER.debug(
-            "ObiMeterReadingSensor native_value called. Data: %s",
-            self.coordinator.data,
+        device_data = (
+            self.coordinator.data.get("devices", {}).get(self._device_id)
+            if self.coordinator.data
+            else None
         )
-        if (
-            self.coordinator.data
-            and "meter" in self.coordinator.data
-            and self.coordinator.data["meter"]
-        ):
-            meter_data = self.coordinator.data["meter"]
+        _LOGGER.debug(
+            "ObiMeterReadingSensor native_value called for %s. Data: %s",
+            self._device_id,
+            device_data,
+        )
+        if device_data and device_data.get("meter"):
+            meter_data = device_data["meter"]
 
             # If it's a list, get the latest record
             if isinstance(meter_data, list) and len(meter_data) > 0:

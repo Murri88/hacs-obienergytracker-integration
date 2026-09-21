@@ -25,8 +25,6 @@ class ObiEnergyTrackerAPI:
         email: str,
         password: str,
         country: str = "DE",
-        bridge_id: str | None = None,
-        device_id: str | None = None,
     ) -> None:
         """Initialize the API client."""
         self.session = session
@@ -34,8 +32,6 @@ class ObiEnergyTrackerAPI:
         self.password = password
         self.country = country
         self.token: str | None = None
-        self.bridge_id = bridge_id
-        self.device_id = device_id
 
     async def async_login(self) -> bool:
         """Authenticate with the Obi EnergyTracker API."""
@@ -78,8 +74,12 @@ class ObiEnergyTrackerAPI:
             _LOGGER.error("Login error: %s", err)
             return False
 
-    async def async_get_bridge_info(self) -> dict[str, str] | None:
-        """Get bridge and device IDs from user profile."""
+    async def async_get_bridge_devices(self) -> dict[str, Any] | None:
+        """Get the bridge id and all devices (sensors) connected to it.
+
+        A bridge can have multiple sensors connected to it since the OBI
+        bridge firmware update; previously only the first sensor was used.
+        """
         if not self.token:
             return None
 
@@ -112,18 +112,24 @@ class ObiEnergyTrackerAPI:
                     _LOGGER.error("No bridge found in user info")
                     return None
 
-                self.bridge_id = bridge.get("id")
+                bridge_id = bridge.get("id")
                 sensors = bridge.get("sensors", [])
-                if sensors:
-                    self.device_id = sensors[0].get("id")
+                devices = [
+                    {
+                        "device_id": sensor["id"],
+                        "device_name": sensor.get("name") or sensor["id"],
+                    }
+                    for sensor in sensors
+                    if sensor.get("id")
+                ]
 
-                if not self.bridge_id or not self.device_id:
-                    _LOGGER.error("Could not find bridge_id or device_id")
+                if not bridge_id or not devices:
+                    _LOGGER.error("Could not find bridge_id or any devices")
                     return None
 
                 return {
-                    "bridge_id": self.bridge_id,
-                    "device_id": self.device_id,
+                    "bridge_id": bridge_id,
+                    "devices": devices,
                 }
         except (jwt.DecodeError, OSError, ClientError) as err:
             _LOGGER.error("Error getting bridge info: %s", err)
@@ -131,19 +137,23 @@ class ObiEnergyTrackerAPI:
 
     async def async_get_hourly_data(
         self,
+        bridge_id: str,
+        device_id: str,
         start_date: datetime | None = None,
         num_days: int = 1,
     ) -> dict[str, Any] | None:
         """Get hourly energy data for multiple days.
 
         Args:
+            bridge_id: The bridge the device is connected to
+            device_id: The device (sensor) to fetch data for
             start_date: Start date for data retrieval (defaults to today)
             num_days: Number of days to fetch (default 1)
 
         Returns:
             Dictionary containing hourly energy data
         """
-        if not self.token or not self.bridge_id or not self.device_id:
+        if not self.token:
             return None
 
         try:
@@ -162,7 +172,7 @@ class ObiEnergyTrackerAPI:
 
             url = (
                 f"{ENERGY_TRACKING_URL}/historical-data/"
-                f"{self.bridge_id}/{self.device_id}/hourly"
+                f"{bridge_id}/{device_id}/hourly"
             )
 
             params = {
@@ -183,9 +193,11 @@ class ObiEnergyTrackerAPI:
             _LOGGER.error("Error getting hourly data: %s", err)
             return None
 
-    async def async_get_meter_data(self) -> dict[str, Any] | None:
-        """Get meter reading data (Zählerstand)."""
-        if not self.token or not self.bridge_id or not self.device_id:
+    async def async_get_meter_data(
+        self, bridge_id: str, device_id: str
+    ) -> dict[str, Any] | None:
+        """Get meter reading data (Zählerstand) for a single device."""
+        if not self.token:
             return None
 
         try:
@@ -199,7 +211,7 @@ class ObiEnergyTrackerAPI:
 
             url = (
                 f"{ENERGY_TRACKING_URL}/historical-data/"
-                f"{self.bridge_id}/{self.device_id}/meter"
+                f"{bridge_id}/{device_id}/meter"
             )
 
             params = {

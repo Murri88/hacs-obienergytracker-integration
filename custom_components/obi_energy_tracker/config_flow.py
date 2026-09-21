@@ -17,7 +17,7 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api import ObiEnergyTrackerAPI
-from .const import CONF_BRIDGE_ID, CONF_COUNTRY, CONF_DEVICE_ID, DOMAIN
+from .const import CONF_COUNTRY, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,9 +70,7 @@ class ObiEnergyTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
             if await api.async_login():
-                if info := await api.async_get_bridge_info():
-                    user_input[CONF_BRIDGE_ID] = info["bridge_id"]
-                    user_input[CONF_DEVICE_ID] = info["device_id"]
+                if await api.async_get_bridge_devices():
                     return self.async_create_entry(
                         title=user_input[CONF_EMAIL],
                         data=user_input,

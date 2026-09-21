@@ -111,7 +111,8 @@ rules:
     comment: No known limitations documented yet.
   docs-supported-devices:
     status: done
-    comment: Obi EnergyTracker devices supported via bridge_id/device_id.
+    comment: Obi EnergyTracker devices are discovered per bridge (a bridge can
+      have multiple connected sensors).
   docs-supported-functions:
     status: done
     comment: Energy production and grid feed tracking documented.

@@ -12,7 +12,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from . import ObiEnergyTrackerConfigEntry
 from .api import ObiEnergyTrackerAPI
-from .const import CONF_BRIDGE_ID, CONF_COUNTRY, CONF_DEVICE_ID
+from .const import CONF_COUNTRY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,8 +28,6 @@ async def async_get_config_entry_diagnostics(
         email=config_entry.data.get("email", ""),
         password=config_entry.data.get("password", ""),
         country=config_entry.data.get(CONF_COUNTRY, "DE"),
-        bridge_id=config_entry.data.get(CONF_BRIDGE_ID),
-        device_id=config_entry.data.get(CONF_DEVICE_ID),
     )
 
     api_available = False
@@ -39,12 +37,20 @@ async def async_get_config_entry_diagnostics(
         _LOGGER.debug("Diagnostics login failed: %s", err)
         api_available = False
 
+    coordinator = config_entry.runtime_data
+    coordinator_data = coordinator.data if coordinator else None
+    devices = coordinator_data.get("devices", {}) if coordinator_data else {}
+
     return {
         "config_entry_data": {
             "email": config_entry.data.get("email", ""),
             "country": config_entry.data.get(CONF_COUNTRY, "DE"),
-            "bridge_id": config_entry.data.get(CONF_BRIDGE_ID),
-            "device_id": config_entry.data.get(CONF_DEVICE_ID),
         },
         "api_available": api_available,
+        "bridge_id": coordinator_data.get("bridge_id") if coordinator_data else None,
+        "device_count": len(devices),
+        "devices": [
+            {"device_id": device_id, "device_name": device.get("device_name")}
+            for device_id, device in devices.items()
+        ],
     }

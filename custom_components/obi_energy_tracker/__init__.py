@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import ObiEnergyTrackerAPI
-from .const import CONF_BRIDGE_ID, CONF_COUNTRY, CONF_DEVICE_ID, DOMAIN
+from .const import CONF_COUNTRY, DOMAIN
 from .coordinator import ObiEnergyTrackerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,8 +34,6 @@ async def async_setup_entry(
         email=entry.data[CONF_EMAIL],
         password=entry.data[CONF_PASSWORD],
         country=entry.data.get(CONF_COUNTRY, "DE"),
-        bridge_id=entry.data.get(CONF_BRIDGE_ID),
-        device_id=entry.data.get(CONF_DEVICE_ID),
     )
 
     # Authenticate
